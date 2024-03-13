@@ -4,13 +4,15 @@ let mcan = document.getElementById("mcan");
 mcan.width = window.innerWidth*0.95;
 mcan.height = window.innerHeight*0.95;
 let mctx = mcan.getContext("2d");
+let autoplayButton = document.getElementById("autoplaybutton");
 let continueButton = document.getElementById("continuebutton");
 let backgroundInput = document.getElementById("backgroundinput");
 let backgroundColor = [Math.random(), Math.random(), Math.random()];
 backgroundInput.value = colorString(...backgroundColor, 1).substring(0, 7);
+let statsDiv = document.getElementById("statsdiv");
 // https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input/range
 let animationSpeedInput = document.getElementById("animationspeedinput");
-let animationSpeed = 1;
+let animationSpeed = 2;
 
 let mutationRate = 0.05;
 let unusualFurColorRate = 0.1;
@@ -22,6 +24,7 @@ let cats = [];
 let mice = [];
 let catIdCounter = 0;
 let mouseIdCounter = 0;
+let year = 0;
 const near0 = 0.0000001;
 
 function newNormalCatColor(){
@@ -605,9 +608,9 @@ class Cat{
             for (let i=0; i<chromosomeFuncs.length*2; i+=2) {
                 parents.forEach((parent)=>{
                     if (Math.random() < mutationRate) {
-                        this.chromosomes.push([chromosomeFuncs[i/2][0].random(this)]);
+                        this.chromosomes.push([chromosomeFuncs[i/2][0].random(this)].slice());
                     } else {
-                        this.chromosomes.push(parent.chromosomes[i+Math.floor(Math.random()*2)]);
+                        this.chromosomes.push(parent.chromosomes[i+Math.floor(Math.random()*2)].slice());
                     }
                 });
             }
@@ -661,13 +664,6 @@ function updatePhenotypes(cat){
 function drawCatFace(ctx, cw, cat, x, y, name, r){
     let face = new CatHeadFront(cat.appearance, x/cw, y/cw, r, 0, 0, 0.1, 0, 0, 0, 1, 1, 0, 0, 1, 1, [0, 0, 0, 0], 0, 0, 0);
     face.drawSelf(ctx, cw);
-    if (name) {
-        // https://www.w3schools.com/graphics/canvas_text.asp
-        ctx.fillStyle = "black";
-        ctx.font = "14px Arial";
-        ctx.textAlign = "center";
-        ctx.fillText(cat.formalName, x, y+65);
-    }
 }
 
 function confineRange(value, min, max){
@@ -707,6 +703,24 @@ for (let i=0; i<20; i++) {
 
 mouseSetup();
 updateMcan();
+addGenerationStats();
+
+autoplayButton.addEventListener("click", ()=>{
+    if (autoplayButton.innerText == "Autoplay (off)") {
+        autoplayButton.innerText = "Autoplay (on)";
+        autoplayButton.style.background = "gold";
+        continueButton.style.display = "none";
+        if (continueButton.innerText == "Simulate Hunting") {
+            continueButton.innerText = "Show Next Generation";
+            deathFadeLoopStop = false;
+            timeCounter = 0;
+            huntingLoop();
+        }
+    } else if (autoplayButton.innerText == "Autoplay (on)") {
+        autoplayButton.innerText = "Autoplay (off)";
+        autoplayButton.style.background = "white";
+    }
+});
 
 continueButton.addEventListener("click", ()=>{
     if (continueButton.innerText == "Simulate Hunting") {
@@ -718,9 +732,7 @@ continueButton.addEventListener("click", ()=>{
     } else if (continueButton.innerText == "Show Next Generation") {
         continueButton.innerText = "Simulate Hunting";
         deathFadeLoopStop = true;
-        catSetup();
-        mouseSetup();
-        updateMcan();
+        showNextGeneration();
     }
 });
 
@@ -741,9 +753,99 @@ backgroundInput.addEventListener("input", ()=>{
     updateMcan();
 });
 
-animationSpeedInput.addEventListener("input", ()=>{
-    animationSpeed = 2**animationSpeedInput.value;
+animationSpeedInput.addEventListener("change", ()=>{
+    animationSpeed = animationSpeedInput.value;
 });
+
+function showNextGeneration(){
+    year ++;
+    catSetup();
+    mouseSetup();
+    updateMcan();
+    addGenerationStats();
+}
+
+function addGenerationStats(){
+    let div = document.createElement("div");
+    // https://developer.mozilla.org/en-US/docs/Web/API/Element/prepend
+    statsDiv.prepend(div);
+    let statscan = document.createElement("canvas");
+    div.appendChild(statscan);
+    statscan.width = 550;
+    statscan.height = 250;
+    let statsctx = statscan.getContext("2d");
+    let mcAlleles = [];
+    let mcPhenotypes = [];
+    cats.forEach((cat)=>{
+        mcAlleles.push(cat.chromosomes[2].slice(), cat.chromosomes[3].slice());
+        mcPhenotypes.push([cat.appearance.mc.slice()]);
+    });
+    pieChart(mcAlleles, statsctx, 125, 150, 90);
+    pieChart(mcPhenotypes, statsctx, 375, 150, 90);
+    // https://www.w3schools.com/graphics/canvas_text.asp
+    statsctx.fillStyle = "black";
+    statsctx.font = "bold 16px Arial";
+    statsctx.textAlign = "center";
+    statsctx.fillText("Year "+year+" Fur Color Alleles", 125, 50);
+    statsctx.fillText("Year "+year+" Fur Color Phenotypes", 375, 50);
+}
+
+function pieChart(data, ctx, x, y, r){
+    let frequencies = [];
+    data.forEach((item)=>{
+        let newItem = true;
+        for (let i=0; i<frequencies.length; i+=2) {
+            if (isSame(item[0], frequencies[i][0])) {
+                newItem = false;
+                frequencies[i+1] ++;
+            }
+        }
+        if (newItem) {
+            frequencies.push(item.slice(), 1);
+        }
+    });
+    let orderedFrequencies = [];
+    while (frequencies.length > 0) {
+        let highestFrequency = 0;
+        let index = 0;
+        for (let i=0; i<frequencies.length; i+=2) {
+            if (frequencies[i+1] > highestFrequency) {
+                highestFrequency = frequencies[i+1];
+                index = i;
+            }
+        }
+        orderedFrequencies.push(...frequencies.splice(index, 2));
+    }
+    let startAngle = 0;
+    let endAngle = 0;
+    for (let i=0; i<orderedFrequencies.length; i+=2) {
+        startAngle = endAngle;
+        endAngle += Math.PI*2*orderedFrequencies[i+1]/data.length;
+        ctx.beginPath();
+        ctx.fillStyle = colorString(...orderedFrequencies[i][0], 1);
+        ctx.moveTo(x, y);
+        // https://developer.mozilla.org/en-US/docs/Web/API/CanvasRenderingContext2D/arc
+        ctx.arc(x, y, r, startAngle, endAngle);
+        ctx.lineTo(x, y);
+        ctx.fill();
+    }
+}
+
+function isSame(item1, item2){
+    if (Array.isArray(item1) && Array.isArray(item2) && item1.length == item2.length) {
+        let same = true;
+        for (let i=0; i<item1.length; i++) {
+            if (item1[i] != item2[i]) {
+                same = false;
+            }
+        }
+        return same;
+    } else if (!Array.isArray(item1) && !Array.isArray(item2)) {
+        return item1 == item2;
+    } else {
+        return false;
+    }
+}
 
 function updateMcan(){
     mctx.fillStyle = backgroundInput.value;
@@ -943,7 +1045,9 @@ function huntingLoop(){
             }
         }
         setTimeout(()=>{
-            continueButton.style.display = "block";
+            if (autoplayButton.innerText == "Autoplay (off)") {
+                continueButton.style.display = "block";
+            }
             deathFadeLoop();
         }, 1000);
     }
@@ -956,7 +1060,11 @@ function deathFadeLoop(){
     cats.forEach((cat)=>{
         drawCatFace(mctx, mcan.height, cat, cat.pos.x, cat.pos.y, false, 0.03);
     });
-    if (timeCounter < 300 && !deathFadeLoopStop) {
+    if (!deathFadeLoopStop && (autoplayButton.innerText == "Autoplay (off)" || timeCounter < 120) && !(autoplayButton.innerText == "Autoplay (on)" && animationSpeed > 16)) {
         requestAnimationFrame(deathFadeLoop);
+    } else if (autoplayButton.innerText == "Autoplay (on)") {
+        showNextGeneration();
+        timeCounter = 0;
+        huntingLoop();
     }
 }
